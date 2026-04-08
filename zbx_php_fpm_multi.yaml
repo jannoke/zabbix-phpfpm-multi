@@ -1,0 +1,616 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    - uuid: e5cfc684af9f4057a5c2b91371f1b0d3
+      template: 'Template App PHP-FPM Multi ACTIVE'
+      name: 'Template App PHP-FPM Multi ACTIVE'
+      description: |
+        PHP-FPM Zabbix Template with Auto Discovery and Multiple Pools.
+        - Provides auto discovery of PHP-FPM pools (LLD)
+        - Detects pools that via socket and via TCP
+        - Supported types of PHP process manager: dynamic, static, ondemand.
+        - Supports multiple PHP versions, i.e. you can use PHP 7.2 and PHP 7.3 on the same server and we will detect them all.
+        
+        Homepage: https://github.com/rvalitov/zabbix-php-fpm
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 0a89602bd29547e992e1d6c50de53440
+          name: 'Number of CPUs'
+          type: ZABBIX_ACTIVE
+          key: 'system.cpu.num["online"]'
+          history: 1h
+          description: 'Number of active CPUs'
+          tags:
+            - tag: Application
+              value: PHP-FPM
+      discovery_rules:
+        - uuid: 934b4d414b844c4a89c8bf207288a1fa
+          name: 'PHP-FPM Pools Discovery'
+          type: ZABBIX_ACTIVE
+          key: 'php-fpm.discover[{$PHP_FPM_STATUS_URL}]'
+          delay: 2m
+          lifetime: 30d
+          enabled_lifetime_type: DISABLE_NEVER
+          item_prototypes:
+            - uuid: 5463d10953db400289558cc45f12578b
+              name: 'Pool {#POOLNAME}: connections per sec'
+              type: DEPENDENT
+              key: 'php-fpm.accepted_conn[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              description: 'The number of incoming requests per second that the pool has accepted; when a connection is accepted it is removed from the listen queue (displayed in real time).'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''accepted conn'']'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+              trigger_prototypes:
+                - uuid: 78643ba604d340a0b7b249d20b7f6bd6
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.accepted_conn[{#POOLSOCKET}])>=500'
+                  name: 'PHP-FPM: too many connections on {HOST.NAME} pool {#POOLNAME}'
+                  priority: HIGH
+                  description: 'Too many active connections on pool {#POOLNAME}. It means this pool is under high load. Please, make sure that your website is reachable and works as expected. For high load websites with huge amount of traffic please manually adjust this trigger to higher values. For websites with low or standard amount of visitors you may be under DDoS attack. Anyway, please, check the status of your server (CPU, memory utilization) to make sure that your server can handle this traffic and does not have performance issues.'
+            - uuid: eea6ebf734c6489bb8a94164e2937cbf
+              name: 'Pool {#POOLNAME}: active processes'
+              type: DEPENDENT
+              key: 'php-fpm.active_processes[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The number of servers current processing a page - the minimum is 1 (so even on a fully idle server, the result will be not read 0).'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''active processes'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 6af6d1a82ebe456f834d899c726ef6c5
+              name: 'Pool {#POOLNAME}: CPU avg utilization'
+              type: CALCULATED
+              key: 'php-fpm.cpu[{#POOLNAME}]'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              units: '%'
+              params: 'last(//proc.cpu.util["php-fpm: pool {#POOLNAME}"])/last(//system.cpu.num["online"])'
+              description: 'CPU utilization used by the pool normalized by the number of cores.'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: c3f06ea174fc43af819d088e75955a7a
+              name: 'Pool {#POOLNAME}: idle processes'
+              type: DEPENDENT
+              key: 'php-fpm.idle_processes[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The total number of idle processes.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''idle processes'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 465c7a665cb24dc3bb87ad258d76a6c9
+              name: 'Pool {#POOLNAME}: listen queue'
+              type: DEPENDENT
+              key: 'php-fpm.listen_queue[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The current number of connections that have been initiated, but not yet accepted. If this value is non-zero it typically means that all the available server processes are currently busy, and there are no processes available to serve the next request. Raising pm.max_children (provided the server can handle it) should help keep this number low. This property follows from the fact that PHP-FPM listens via a socket (TCP or file based), and thus inherits some of the characteristics of sockets.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''listen queue'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 672ea19e0ca649158baabfcb5964f4c9
+              name: 'Pool {#POOLNAME}: listen queue length'
+              type: DEPENDENT
+              key: 'php-fpm.listen_queue_len[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The upper limit on the number of connections that will be queued. Once this limit is reached, subsequent connections will either be refused, or ignored. This value is set by the php-fpm per pool configuration option ''listen.backlog'', which defaults to -1 (unlimited). However, this value is also limited by the system (sysctl) value ''net.core.somaxconn'', which defaults to 128 on many Linux systems.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''listen queue len'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 8ea12a8980e9469c96547edd03206007
+              name: 'Pool {#POOLNAME}: max active processes'
+              type: DEPENDENT
+              key: 'php-fpm.max_active_processes[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The highest value that ''active processes'' has reached since the php-fpm server started. This value should not exceed pm.max_children.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''max active processes'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: e0fb826d95204055b9c74059565e60c9
+              name: 'Pool {#POOLNAME}: max children reached'
+              type: DEPENDENT
+              key: 'php-fpm.max_children_reached[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The number of times that pm.max_children has been reached since the php-fpm pool started (only applicable if the process manager is ondemand or dynamic).'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''max children reached'']'
+                - type: SIMPLE_CHANGE
+                  parameters:
+                    - ''
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 4e176ccb9b594e79ab597c7ab52877ae
+              name: 'Pool {#POOLNAME}: max listen queue'
+              type: DEPENDENT
+              key: 'php-fpm.max_listen_queue[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The maximum number of requests in the queue of pending connections since this FPM pool has started.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''max listen queue'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 3086428892184962ae96768cbdf3a7fb
+              name: 'Pool {#POOLNAME}: process manager'
+              type: DEPENDENT
+              key: 'php-fpm.process_manager[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              value_type: TEXT
+              trends: '0'
+              description: 'The method used by the process manager to control the number of child processes (possible values: ondemand, dynamic or static) for this pool.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''process manager'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+              trigger_prototypes:
+                - uuid: 7fee325ba09d48949513397dd8d79177
+                  expression: '(last(/Template App PHP-FPM Multi ACTIVE/php-fpm.process_manager[{#POOLSOCKET}],#1)<>last(/Template App PHP-FPM Multi ACTIVE/php-fpm.process_manager[{#POOLSOCKET}],#2))=1'
+                  name: 'PHP-FPM manager changed on {HOST.NAME} pool {#POOLNAME}'
+                  priority: INFO
+                  description: 'PHP-FPM manager changed on pool {#POOLNAME} from {ITEM.LASTVALUE} to {ITEM.VALUE}.'
+            - uuid: c91eef23ad604f0cbaaa8bdbe9a4e294
+              name: 'Pool {#POOLNAME}: queue utilization'
+              type: CALCULATED
+              key: 'php-fpm.queue[{#POOLSOCKET}]'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              units: '%'
+              params: 'last(//php-fpm.listen_queue[{#POOLSOCKET}])/(last(//php-fpm.listen_queue_len[{#POOLSOCKET}])+0.0001)'
+              description: 'Queue utilization.'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+              trigger_prototypes:
+                - uuid: ef3ae478bfd34472ba21763e3bc9ac2f
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.queue[{#POOLSOCKET}])>=25'
+                  name: 'PHP-FPM queue utilization for pool {#POOLNAME} reached 25% on {HOST.NAME}'
+                  priority: WARNING
+                  description: 'The queue for this pool reached 25% of its maximum capacity. Items in queue represent the current number of connections that have been initiated on this pool, but not yet accepted. It typically means that all the available server processes are currently busy, and there are no processes available to serve the next request. Raising pm.max_children (provided the server can handle it) should help keep this number low. This trigger follows from the fact that PHP-FPM listens via a socket (TCP or file based), and thus inherits some of the characteristics of sockets. Low values of the listen queue generally result in performance issues of this pool. The queue length is defined by the backlog option in your pool''s configuration.'
+                - uuid: a501480b93b54f98b876b115e962e80a
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.queue[{#POOLSOCKET}])>=50'
+                  name: 'PHP-FPM queue utilization for pool {#POOLNAME} reached 50% on {HOST.NAME}'
+                  priority: AVERAGE
+                  description: 'The queue for this pool reached 50% of its maximum capacity. Items in queue represent the current number of connections that have been initiated on this pool, but not yet accepted. It typically means that all the available server processes are currently busy, and there are no processes available to serve the next request. Raising pm.max_children (provided the server can handle it) should help keep this number low. This trigger follows from the fact that PHP-FPM listens via a socket (TCP or file based), and thus inherits some of the characteristics of sockets. This pool already has performance issues. Please, check that your server has enough resources and adjust the configuration of this pool to handle more concurrent requests, otherwise you can suffer serious degraded performance. The queue length is defined by the backlog option in your pool''s configuration.'
+                - uuid: 6879a71f25b946fc868d05b072d4892d
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.queue[{#POOLSOCKET}])>=85'
+                  name: 'PHP-FPM queue utilization for pool {#POOLNAME} reached 85% on {HOST.NAME}'
+                  priority: HIGH
+                  description: 'The queue for this pool reached 85% of its maximum capacity. Items in queue represent the current number of connections that have been initiated on this pool, but not yet accepted. It typically means that all the available server processes are currently busy, and there are no processes available to serve the next request. Raising pm.max_children (provided the server can handle it) should help keep this number low. This trigger follows from the fact that PHP-FPM listens via a socket (TCP or file based), and thus inherits some of the characteristics of sockets. This pool already has serious performance issues. Please, check that your server has enough resources and adjust the configuration of this pool to handle more concurrent requests, otherwise you can face severe errors when new requests can''t be processed and will be rejected generating errors such as HTTP 500. The queue length is defined by the backlog option in your pool''s configuration.'
+            - uuid: 2025b2dd6c9443529e097daefca6e28d
+              name: 'Pool {#POOLNAME}: slow requests'
+              type: DEPENDENT
+              key: 'php-fpm.slow_requests[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              description: 'The number of requests that exceeded your request_slowlog_timeout value.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''slow requests'']'
+                - type: SIMPLE_CHANGE
+                  parameters:
+                    - ''
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+              trigger_prototypes:
+                - uuid: 78d8dda78bf94386ab976d15ada8417a
+                  expression: 'change(/Template App PHP-FPM Multi ACTIVE/php-fpm.slow_requests[{#POOLSOCKET}])>0'
+                  name: 'PHP-FPM detected slow request on {HOST.NAME} pool {#POOLNAME}'
+                  priority: WARNING
+                  description: 'PHP-FPM detected slow request on pool {#POOLNAME}. A slow request means that it took more time to execute than expected (defined in the configuration of your pool). It means that your pool has performance issues: either it is under high load, your pool has non-optimal configuration, your server has insufficient resources, or your PHP scripts have slow code (have bugs or bad programming style).'
+            - uuid: 076779d1400b4407b3cb831292bb4923
+              name: 'Pool {#POOLNAME}: start since'
+              type: DEPENDENT
+              key: 'php-fpm.start_since[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              units: s
+              description: 'How long has this pool been running.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''start since'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: e56d2ebdc3cd4bea96b5f9be4e3b12d9
+              name: 'Pool {#POOLNAME}: start time'
+              type: DEPENDENT
+              key: 'php-fpm.start_time[{#POOLSOCKET}]'
+              delay: '0'
+              history: 365d
+              trends: 1000d
+              units: unixtime
+              description: 'The time when this pool was started.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[''start time'']'
+              master_item:
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 6d8e44087497488bb356f1ec9efc6315
+              name: 'Pool {#POOLNAME} status'
+              type: ZABBIX_ACTIVE
+              key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              history: 365d
+              value_type: TEXT
+              trends: '0'
+              description: 'The raw data of status page reported by PHP-FPM'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+            - uuid: 86ebcb044c364c52b9ab7f20ccc53c29
+              name: 'Pool {#POOLNAME}: CPU utilization'
+              type: ZABBIX_ACTIVE
+              key: 'proc.cpu.util["php-fpm: pool {#POOLNAME}"]'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              units: '%'
+              description: 'CPU utilization used by the pool. The return value is based on the use of a single CPU core, in percent. For example, CPU utilization of the full use of two cores is 200%.'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+            - uuid: 42d31f9dd7684c99a5f88c83ce9e9893
+              name: 'Pool {#POOLNAME}: memory utilization'
+              type: ZABBIX_ACTIVE
+              key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem]'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              units: '%'
+              description: 'Memory used percentage by this pool relative to total memory available'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+              trigger_prototypes:
+                - uuid: 26c1a713b7a24190889bfa4b3e029f95
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem])>=50'
+                  name: 'PHP-FPM uses too much memory on {HOST.NAME} pool {#POOLNAME}'
+                  priority: AVERAGE
+                  description: 'PHP-FPM uses too much memory on {HOST.NAME} pool {#POOLNAME}. Please, make sure that your server has sufficient resources to handle this pool, and check that the traffic of your website is not abnormal (check that your website is not under DDoS attack).'
+            - uuid: 4c7042644f634a1fa4daffac01a33b1b
+              name: 'Pool {#POOLNAME}: memory used'
+              type: ZABBIX_ACTIVE
+              key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,rss]'
+              history: 365d
+              value_type: FLOAT
+              trends: 1000d
+              units: B
+              description: 'Memory used by this pool in Bytes'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+          graph_prototypes:
+            - uuid: c7b2f3775afe461a983020d659f7606e
+              name: 'Pool {#POOLNAME} Connections'
+              ymin_type_1: FIXED
+              graph_items:
+                - drawtype: FILLED_REGION
+                  color: 90CAF9
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.accepted_conn[{#POOLSOCKET}]'
+            - uuid: 69dec941bff041469dedcf3d96bf36c0
+              name: 'Pool {#POOLNAME} CPU'
+              ymin_type_1: FIXED
+              graph_items:
+                - drawtype: FILLED_REGION
+                  color: FF8A65
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.cpu[{#POOLNAME}]'
+            - uuid: 8a4efe5f929046c38212b5804a76e9b2
+              name: 'Pool {#POOLNAME} Max Children Reached'
+              ymin_type_1: FIXED
+              graph_items:
+                - drawtype: FILLED_REGION
+                  color: EF5350
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.max_children_reached[{#POOLSOCKET}]'
+            - uuid: b2700a3142df4e459c2ec6b1e04936e2
+              name: 'Pool {#POOLNAME} Memory'
+              ymin_type_1: FIXED
+              graph_items:
+                - drawtype: GRADIENT_LINE
+                  color: 00BFFF
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,rss]'
+                - sortorder: '1'
+                  drawtype: BOLD_LINE
+                  color: FF0000
+                  yaxisside: RIGHT
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem]'
+            - uuid: f9c213ca68e74544aac5ae7b4cc3ff1c
+              name: 'Pool {#POOLNAME} Process'
+              ymin_type_1: FIXED
+              graph_items:
+                - color: FF0080
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.active_processes[{#POOLSOCKET}]'
+                - sortorder: '1'
+                  color: 0040FF
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.idle_processes[{#POOLSOCKET}]'
+            - uuid: 09a7deec10f04616b07c682dabae7b41
+              name: 'Pool {#POOLNAME} Queue'
+              ymin_type_1: FIXED
+              graph_items:
+                - drawtype: GRADIENT_LINE
+                  color: FB8C00
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.listen_queue[{#POOLSOCKET}]'
+                - sortorder: '1'
+                  drawtype: BOLD_LINE
+                  color: FF0000
+                  yaxisside: RIGHT
+                  item:
+                    host: 'Template App PHP-FPM Multi ACTIVE'
+                    key: 'php-fpm.queue[{#POOLSOCKET}]'
+      macros:
+        - macro: '{$PHP_FPM_STATUS_URL}'
+          value: /php-fpm-status
+      dashboards:
+        - uuid: b7dce123fc80424a9b92be0f832a2bb8
+          name: PHP-FPM
+          pages:
+            - widgets:
+                - type: graphprototype
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} Connections'
+                    - type: STRING
+                      name: reference
+                      value: AAAFZ
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'
+                - type: graphprototype
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} CPU'
+                    - type: STRING
+                      name: reference
+                      value: AAAGB
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'
+                - type: graphprototype
+                  'y': '10'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} Queue'
+                    - type: STRING
+                      name: reference
+                      value: AAAGD
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'
+                - type: graphprototype
+                  x: '36'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} Process'
+                    - type: STRING
+                      name: reference
+                      value: AAAGA
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'
+                - type: graphprototype
+                  x: '36'
+                  'y': '5'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} Memory'
+                    - type: STRING
+                      name: reference
+                      value: AAAGC
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'
+                - type: graphprototype
+                  x: '36'
+                  'y': '10'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid
+                      value:
+                        host: 'Template App PHP-FPM Multi ACTIVE'
+                        name: 'Pool {#POOLNAME} Max Children Reached'
+                    - type: STRING
+                      name: reference
+                      value: AAAGE
+                    - type: INTEGER
+                      name: rows
+                      value: '1'
+                    - type: INTEGER
+                      name: source_type
+                      value: '2'

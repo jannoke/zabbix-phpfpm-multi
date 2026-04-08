@@ -108,8 +108,8 @@ get_php_version() {
     local config_file="$1"
     local version
 
-    # Standard Debian/Ubuntu path: /etc/php/8.2/...
-    version=$(echo "$config_file" | grep -oE 'php[/_-]?[0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    # Standard Debian/Ubuntu path: /etc/php/8.2/... (separator required)
+    version=$(echo "$config_file" | grep -oE 'php[/_-][0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+' | head -1)
 
     if [ -z "$version" ]; then
         # Remi-style path: /etc/opt/remi/php82/ or /etc/opt/remi/php80/
@@ -157,8 +157,10 @@ FIRST=1
 echo '{"data":['
 
 for path_pattern in "${CONFIG_PATHS[@]}"; do
-    # Expand glob patterns safely
+    # Use nullglob so unmatched patterns produce no iterations
+    shopt -s nullglob
     for expanded_path in $path_pattern; do
+        shopt -u nullglob
         [ -d "$expanded_path" ] || continue
 
         while IFS= read -r -d '' config_file; do

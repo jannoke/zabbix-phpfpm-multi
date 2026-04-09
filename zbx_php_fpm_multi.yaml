@@ -10,11 +10,18 @@ zabbix_export:
       description: |
         PHP-FPM Zabbix Template with Auto Discovery and Multiple Pools.
         - Provides auto discovery of PHP-FPM pools (LLD)
-        - Detects pools that via socket and via TCP
+        - Only discovers pools with actively listening sockets (verified via ss)
+        - Uses cgi-fcgi for querying status/ping endpoints directly
+        - Detects pools via TCP or Unix socket admin/status ports
         - Supported types of PHP process manager: dynamic, static, ondemand.
-        - Supports multiple PHP versions, i.e. you can use PHP 7.2 and PHP 7.3 on the same server and we will detect them all.
+        - Supports multiple PHP versions on the same server (PHP version tag included)
+        - Ping health check with HIGH priority alert on failure
         
-        Homepage: https://github.com/rvalitov/zabbix-php-fpm
+        Required tools on monitored host: cgi-fcgi, ss, grep, sed, awk, find
+        Install cgi-fcgi: apt-get install libfcgi-bin  (Debian/Ubuntu)
+                          yum install fcgi              (RHEL/CentOS)
+        
+        Homepage: https://github.com/jannoke/zabbix-phpfpm-multi
       groups:
         - name: Templates/Applications
       items:
@@ -31,13 +38,13 @@ zabbix_export:
         - uuid: 934b4d414b844c4a89c8bf207288a1fa
           name: 'PHP-FPM Pools Discovery'
           type: ZABBIX_ACTIVE
-          key: 'php-fpm.discover[{$PHP_FPM_STATUS_URL}]'
+          key: 'php-fpm.discover[{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
           delay: 2m
           lifetime: 30d
           enabled_lifetime_type: DISABLE_NEVER
           item_prototypes:
             - uuid: 5463d10953db400289558cc45f12578b
-              name: 'Pool {#POOLNAME}: connections per sec'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): connections per sec'
               type: DEPENDENT
               key: 'php-fpm.accepted_conn[{#POOLSOCKET}]'
               delay: '0'
@@ -53,12 +60,14 @@ zabbix_export:
                   parameters:
                     - ''
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
               trigger_prototypes:
                 - uuid: 78643ba604d340a0b7b249d20b7f6bd6
                   expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.accepted_conn[{#POOLSOCKET}])>=500'
@@ -66,7 +75,7 @@ zabbix_export:
                   priority: HIGH
                   description: 'Too many active connections on pool {#POOLNAME}. It means this pool is under high load. Please, make sure that your website is reachable and works as expected. For high load websites with huge amount of traffic please manually adjust this trigger to higher values. For websites with low or standard amount of visitors you may be under DDoS attack. Anyway, please, check the status of your server (CPU, memory utilization) to make sure that your server can handle this traffic and does not have performance issues.'
             - uuid: eea6ebf734c6489bb8a94164e2937cbf
-              name: 'Pool {#POOLNAME}: active processes'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): active processes'
               type: DEPENDENT
               key: 'php-fpm.active_processes[{#POOLSOCKET}]'
               delay: '0'
@@ -78,14 +87,16 @@ zabbix_export:
                   parameters:
                     - '$[''active processes'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 6af6d1a82ebe456f834d899c726ef6c5
-              name: 'Pool {#POOLNAME}: CPU avg utilization'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): CPU avg utilization'
               type: CALCULATED
               key: 'php-fpm.cpu[{#POOLNAME}]'
               history: 365d
@@ -99,8 +110,10 @@ zabbix_export:
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: c3f06ea174fc43af819d088e75955a7a
-              name: 'Pool {#POOLNAME}: idle processes'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): idle processes'
               type: DEPENDENT
               key: 'php-fpm.idle_processes[{#POOLSOCKET}]'
               delay: '0'
@@ -112,14 +125,16 @@ zabbix_export:
                   parameters:
                     - '$[''idle processes'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 465c7a665cb24dc3bb87ad258d76a6c9
-              name: 'Pool {#POOLNAME}: listen queue'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): listen queue'
               type: DEPENDENT
               key: 'php-fpm.listen_queue[{#POOLSOCKET}]'
               delay: '0'
@@ -131,14 +146,16 @@ zabbix_export:
                   parameters:
                     - '$[''listen queue'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 672ea19e0ca649158baabfcb5964f4c9
-              name: 'Pool {#POOLNAME}: listen queue length'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): listen queue length'
               type: DEPENDENT
               key: 'php-fpm.listen_queue_len[{#POOLSOCKET}]'
               delay: '0'
@@ -150,14 +167,16 @@ zabbix_export:
                   parameters:
                     - '$[''listen queue len'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 8ea12a8980e9469c96547edd03206007
-              name: 'Pool {#POOLNAME}: max active processes'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): max active processes'
               type: DEPENDENT
               key: 'php-fpm.max_active_processes[{#POOLSOCKET}]'
               delay: '0'
@@ -169,14 +188,16 @@ zabbix_export:
                   parameters:
                     - '$[''max active processes'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: e0fb826d95204055b9c74059565e60c9
-              name: 'Pool {#POOLNAME}: max children reached'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): max children reached'
               type: DEPENDENT
               key: 'php-fpm.max_children_reached[{#POOLSOCKET}]'
               delay: '0'
@@ -191,14 +212,16 @@ zabbix_export:
                   parameters:
                     - ''
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 4e176ccb9b594e79ab597c7ab52877ae
-              name: 'Pool {#POOLNAME}: max listen queue'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): max listen queue'
               type: DEPENDENT
               key: 'php-fpm.max_listen_queue[{#POOLSOCKET}]'
               delay: '0'
@@ -210,14 +233,16 @@ zabbix_export:
                   parameters:
                     - '$[''max listen queue'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 3086428892184962ae96768cbdf3a7fb
-              name: 'Pool {#POOLNAME}: process manager'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): process manager'
               type: DEPENDENT
               key: 'php-fpm.process_manager[{#POOLSOCKET}]'
               delay: '0'
@@ -230,12 +255,14 @@ zabbix_export:
                   parameters:
                     - '$[''process manager'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
               trigger_prototypes:
                 - uuid: 7fee325ba09d48949513397dd8d79177
                   expression: '(last(/Template App PHP-FPM Multi ACTIVE/php-fpm.process_manager[{#POOLSOCKET}],#1)<>last(/Template App PHP-FPM Multi ACTIVE/php-fpm.process_manager[{#POOLSOCKET}],#2))=1'
@@ -243,7 +270,7 @@ zabbix_export:
                   priority: INFO
                   description: 'PHP-FPM manager changed on pool {#POOLNAME} from {ITEM.LASTVALUE} to {ITEM.VALUE}.'
             - uuid: c91eef23ad604f0cbaaa8bdbe9a4e294
-              name: 'Pool {#POOLNAME}: queue utilization'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): queue utilization'
               type: CALCULATED
               key: 'php-fpm.queue[{#POOLSOCKET}]'
               history: 365d
@@ -257,6 +284,8 @@ zabbix_export:
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
               trigger_prototypes:
                 - uuid: ef3ae478bfd34472ba21763e3bc9ac2f
                   expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.queue[{#POOLSOCKET}])>=25'
@@ -274,7 +303,7 @@ zabbix_export:
                   priority: HIGH
                   description: 'The queue for this pool reached 85% of its maximum capacity. Items in queue represent the current number of connections that have been initiated on this pool, but not yet accepted. It typically means that all the available server processes are currently busy, and there are no processes available to serve the next request. Raising pm.max_children (provided the server can handle it) should help keep this number low. This trigger follows from the fact that PHP-FPM listens via a socket (TCP or file based), and thus inherits some of the characteristics of sockets. This pool already has serious performance issues. Please, check that your server has enough resources and adjust the configuration of this pool to handle more concurrent requests, otherwise you can face severe errors when new requests can''t be processed and will be rejected generating errors such as HTTP 500. The queue length is defined by the backlog option in your pool''s configuration.'
             - uuid: 2025b2dd6c9443529e097daefca6e28d
-              name: 'Pool {#POOLNAME}: slow requests'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): slow requests'
               type: DEPENDENT
               key: 'php-fpm.slow_requests[{#POOLSOCKET}]'
               delay: '0'
@@ -289,12 +318,14 @@ zabbix_export:
                   parameters:
                     - ''
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
               trigger_prototypes:
                 - uuid: 78d8dda78bf94386ab976d15ada8417a
                   expression: 'change(/Template App PHP-FPM Multi ACTIVE/php-fpm.slow_requests[{#POOLSOCKET}])>0'
@@ -302,7 +333,7 @@ zabbix_export:
                   priority: WARNING
                   description: 'PHP-FPM detected slow request on pool {#POOLNAME}. A slow request means that it took more time to execute than expected (defined in the configuration of your pool). It means that your pool has performance issues: either it is under high load, your pool has non-optimal configuration, your server has insufficient resources, or your PHP scripts have slow code (have bugs or bad programming style).'
             - uuid: 076779d1400b4407b3cb831292bb4923
-              name: 'Pool {#POOLNAME}: start since'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): start since'
               type: DEPENDENT
               key: 'php-fpm.start_since[{#POOLSOCKET}]'
               delay: '0'
@@ -315,14 +346,16 @@ zabbix_export:
                   parameters:
                     - '$[''start since'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: e56d2ebdc3cd4bea96b5f9be4e3b12d9
-              name: 'Pool {#POOLNAME}: start time'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): start time'
               type: DEPENDENT
               key: 'php-fpm.start_time[{#POOLSOCKET}]'
               delay: '0'
@@ -335,16 +368,18 @@ zabbix_export:
                   parameters:
                     - '$[''start time'']'
               master_item:
-                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+                key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               tags:
                 - tag: Application
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 6d8e44087497488bb356f1ec9efc6315
-              name: 'Pool {#POOLNAME} status'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) status'
               type: ZABBIX_ACTIVE
-              key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL}]'
+              key: 'php-fpm.status[{#POOLSOCKET},{$PHP_FPM_STATUS_URL},{$PHP_FPM_TIMEOUT}]'
               history: 365d
               value_type: TEXT
               trends: '0'
@@ -352,8 +387,10 @@ zabbix_export:
               tags:
                 - tag: Application
                   value: PHP-FPM
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 86ebcb044c364c52b9ab7f20ccc53c29
-              name: 'Pool {#POOLNAME}: CPU utilization'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): CPU utilization'
               type: ZABBIX_ACTIVE
               key: 'proc.cpu.util["php-fpm: pool {#POOLNAME}"]'
               history: 365d
@@ -366,8 +403,10 @@ zabbix_export:
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
             - uuid: 42d31f9dd7684c99a5f88c83ce9e9893
-              name: 'Pool {#POOLNAME}: memory utilization'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): memory utilization'
               type: ZABBIX_ACTIVE
               key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem]'
               history: 365d
@@ -380,6 +419,8 @@ zabbix_export:
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
               trigger_prototypes:
                 - uuid: 26c1a713b7a24190889bfa4b3e029f95
                   expression: 'last(/Template App PHP-FPM Multi ACTIVE/proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem])>=50'
@@ -387,7 +428,7 @@ zabbix_export:
                   priority: AVERAGE
                   description: 'PHP-FPM uses too much memory on {HOST.NAME} pool {#POOLNAME}. Please, make sure that your server has sufficient resources to handle this pool, and check that the traffic of your website is not abnormal (check that your website is not under DDoS attack).'
             - uuid: 4c7042644f634a1fa4daffac01a33b1b
-              name: 'Pool {#POOLNAME}: memory used'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): memory used'
               type: ZABBIX_ACTIVE
               key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,rss]'
               history: 365d
@@ -400,9 +441,34 @@ zabbix_export:
                   value: PHP-FPM
                 - tag: Application
                   value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
+            - uuid: d1e2f3a4b5c64d7e8f9a0b1c2d3e4f5a
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}): ping'
+              type: ZABBIX_ACTIVE
+              key: 'php-fpm.ping[{#POOLSOCKET},{$PHP_FPM_PING_URL},{$PHP_FPM_TIMEOUT}]'
+              history: 365d
+              value_type: UNSIGNED
+              trends: 1000d
+              description: 'Returns 1 if the pool responds to a ping request, 0 otherwise.'
+              valuemap:
+                name: 'PHP-FPM ping status'
+              tags:
+                - tag: Application
+                  value: PHP-FPM
+                - tag: Application
+                  value: 'Pool {#POOLNAME}'
+                - tag: php-version
+                  value: '{#PHPVERSION}'
+              trigger_prototypes:
+                - uuid: e2f3a4b5c6d74e8f9a0b1c2d3e4f5a6b
+                  expression: 'last(/Template App PHP-FPM Multi ACTIVE/php-fpm.ping[{#POOLSOCKET},{$PHP_FPM_PING_URL},{$PHP_FPM_TIMEOUT}])=0'
+                  name: 'PHP-FPM pool {#POOLNAME} (PHP {#PHPVERSION}) is down on {HOST.NAME}'
+                  priority: HIGH
+                  description: 'PHP-FPM pool {#POOLNAME} is not responding to ping requests. The pool may be crashed or stopped.'
           graph_prototypes:
             - uuid: c7b2f3775afe461a983020d659f7606e
-              name: 'Pool {#POOLNAME} Connections'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Connections'
               ymin_type_1: FIXED
               graph_items:
                 - drawtype: FILLED_REGION
@@ -411,7 +477,7 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'php-fpm.accepted_conn[{#POOLSOCKET}]'
             - uuid: 69dec941bff041469dedcf3d96bf36c0
-              name: 'Pool {#POOLNAME} CPU'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) CPU'
               ymin_type_1: FIXED
               graph_items:
                 - drawtype: FILLED_REGION
@@ -420,7 +486,7 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'php-fpm.cpu[{#POOLNAME}]'
             - uuid: 8a4efe5f929046c38212b5804a76e9b2
-              name: 'Pool {#POOLNAME} Max Children Reached'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Max Children Reached'
               ymin_type_1: FIXED
               graph_items:
                 - drawtype: FILLED_REGION
@@ -429,7 +495,7 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'php-fpm.max_children_reached[{#POOLSOCKET}]'
             - uuid: b2700a3142df4e459c2ec6b1e04936e2
-              name: 'Pool {#POOLNAME} Memory'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Memory'
               ymin_type_1: FIXED
               graph_items:
                 - drawtype: GRADIENT_LINE
@@ -445,7 +511,7 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'proc.mem["php-fpm: pool {#POOLNAME}",,,,pmem]'
             - uuid: f9c213ca68e74544aac5ae7b4cc3ff1c
-              name: 'Pool {#POOLNAME} Process'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Process'
               ymin_type_1: FIXED
               graph_items:
                 - color: FF0080
@@ -458,7 +524,7 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'php-fpm.idle_processes[{#POOLSOCKET}]'
             - uuid: 09a7deec10f04616b07c682dabae7b41
-              name: 'Pool {#POOLNAME} Queue'
+              name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Queue'
               ymin_type_1: FIXED
               graph_items:
                 - drawtype: GRADIENT_LINE
@@ -474,8 +540,20 @@ zabbix_export:
                     host: 'Template App PHP-FPM Multi ACTIVE'
                     key: 'php-fpm.queue[{#POOLSOCKET}]'
       macros:
+        - macro: '{$PHP_FPM_PING_URL}'
+          value: /php-fpm-ping
         - macro: '{$PHP_FPM_STATUS_URL}'
           value: /php-fpm-status
+        - macro: '{$PHP_FPM_TIMEOUT}'
+          value: '1'
+      valuemaps:
+        - uuid: f3a4b5c6d7e84f9a0b1c2d3e4f5a6b7c
+          name: 'PHP-FPM ping status'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
       dashboards:
         - uuid: b7dce123fc80424a9b92be0f832a2bb8
           name: PHP-FPM
@@ -492,7 +570,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} Connections'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Connections'
                     - type: STRING
                       name: reference
                       value: AAAFZ
@@ -514,7 +592,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} CPU'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) CPU'
                     - type: STRING
                       name: reference
                       value: AAAGB
@@ -536,7 +614,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} Queue'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Queue'
                     - type: STRING
                       name: reference
                       value: AAAGD
@@ -558,7 +636,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} Process'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Process'
                     - type: STRING
                       name: reference
                       value: AAAGA
@@ -581,7 +659,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} Memory'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Memory'
                     - type: STRING
                       name: reference
                       value: AAAGC
@@ -604,7 +682,7 @@ zabbix_export:
                       name: graphid
                       value:
                         host: 'Template App PHP-FPM Multi ACTIVE'
-                        name: 'Pool {#POOLNAME} Max Children Reached'
+                        name: 'Pool {#POOLNAME} (PHP {#PHPVERSION}) Max Children Reached'
                     - type: STRING
                       name: reference
                       value: AAAGE
